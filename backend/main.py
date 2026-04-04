@@ -1,10 +1,14 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from typing import List
 from datetime import datetime
+import os
 
 app = FastAPI()
 
+# 1. TERA ORIGINAL CORS SETTINGS (Wahi rehne diya hai)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,6 +17,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 2. FRONTEND CONNECTORS (Ye naya hai)
+# Ye line IP address kholte hi 'frontend' folder se index.html utha legi
+@app.get("/")
+async def read_index():
+    return FileResponse('frontend/index.html')
+
+# Ye line CSS aur JS files ko server se link karegi
+# (Make sure tere folders ka naam 'frontend' hi ho)
+app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
+
+# 3. TERA ORIGINAL CONNECTION MANAGER (Same to same)
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
@@ -31,9 +46,10 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# 4. TERA ORIGINAL WEBSOCKET ENDPOINT (Wahi logic hai)
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    # To bypass time check for testing, temporarily comment out the following 3 lines:
+    # TIME-GATE CHECK (1 AM to 5 AM)
     current_hour = datetime.now().hour
     if not (1 <= current_hour < 5):
         await websocket.close(code=1008, reason="The void is closed.")
