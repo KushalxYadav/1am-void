@@ -1,56 +1,97 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from typing import List
+import sqlite3
+import json
 from datetime import datetime
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from passlib.context import CryptContext
 import os
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 app = FastAPI()
 
-# 1. TERA ORIGINAL CORS SETTINGS (Wahi rehne diya hai)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Database setup
+DB_FILE = "void_users.db"
 
-# 2. FRONTEND CONNECTORS (Ye naya hai)
-# Ye line IP address kholte hi 'frontend' folder se index.html utha legi
-@app.get("/")
-async def read_index():
-    return FileResponse('frontend/index.html')
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-# Ye line CSS aur JS files ko server se link karegi
-# (Make sure tere folders ka naam 'frontend' hi ho)
-app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
+init_db()
 
-# 3. TERA ORIGINAL CONNECTION MANAGER (Same to same)
+class User(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/signup")
+async def signup(user: User):
+    if not user.username or not user.password:
+        return JSONResponse(status_code=400, content={"error": "Username and password required."})
+    
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username=?", (user.username,))
+    if cursor.fetchone():
+        conn.close()
+        return JSONResponse(status_code=400, content={"error": "Username already exists."})
+    
+    hashed_password = pwd_context.hash(user.password)
+    cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (user.username, hashed_password))
+    conn.commit()
+    conn.close()
+    
+    return {"message": "Signup successful."}
+
+@app.post("/api/login")
+async def login(user: User):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT password FROM users WHERE username=?", (user.username,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row or not pwd_context.verify(user.password, row[0]):
+        return JSONResponse(status_code=400, content={"error": "Invalid username or password."})
+    
+    return {"message": "Login successful."}
+
+# Connection manager
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: list[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
 
-    async def broadcast(self, message: str, sender: WebSocket):
+    async def broadcast(self, message: str):
         for connection in self.active_connections:
-            if connection != sender:
+            try:
                 await connection.send_text(message)
+            except Exception:
+                pass
 
 manager = ConnectionManager()
 
-# 4. TERA ORIGINAL WEBSOCKET ENDPOINT (Wahi logic hai)
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    # TIME-GATE CHECK (1 AM to 5 AM)
     current_hour = datetime.now().hour
+    # The void is only accessible between 01:00 AM and 04:59 AM
+    # i.e., hour 1, 2, 3, or 4
     if not (1 <= current_hour < 5):
         await websocket.close(code=1008, reason="The void is closed.")
         return
@@ -59,6 +100,15 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            await manager.broadcast(data, sender=websocket)
+            try:
+                msg = json.loads(data)
+                # Ensure the message has sender and text fields before broadcasting
+                if "sender" in msg and "text" in msg:
+                    await manager.broadcast(data)
+            except json.JSONDecodeError:
+                pass
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+# Mount frontend
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
