@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The 1AM Void</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        body {
+            background-color: #000;
+            color: #0f0;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #0f0; border-radius: 3px; }
+        .glassmorphism {
+            background: rgba(20, 20, 20, 0.6);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(0, 255, 0, 0.2);
+        }
+        .glow-text {
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.8), 0 0 20px rgba(0, 255, 0, 0.4);
+        }
+    </style>
+</head>
+<body class="h-[100dvh] flex flex-col m-0 overflow-hidden bg-black text-green-400">
+
+    <!-- Countdown View -->
+    <div id="countdown-view" class="fixed inset-0 flex flex-col items-center justify-center bg-black z-50 transition-opacity duration-500">
+        <h1 class="text-4xl font-bold mb-8 glow-text tracking-widest text-[#0f0]">The 1AM Void</h1>
+        <div id="countdown-timer" class="text-6xl text-green-600 font-bold opacity-80 drop-shadow-[0_0_15px_rgba(0,255,0,0.5)]">00:00:00</div>
+        <p class="mt-4 text-green-800 text-lg uppercase tracking-wider">The void opens in</p>
+    </div>
+
+    <!-- Chat View -->
+    <div id="chat-view" class="w-full h-full flex flex-col hidden relative">
+        <!-- Fixed Header -->
+        <header class="fixed top-0 w-full z-10 glassmorphism p-4 border-b border-green-900 shadow-[0_4px_15px_rgba(0,0,0,0.8)]">
+            <h1 class="text-center text-xl font-bold glow-text tracking-widest text-[#0f0]">The 1AM Void</h1>
+        </header>
+
+        <!-- Chat Container -->
+        <div id="chat-container" class="flex-1 overflow-y-auto mt-[72px] mb-[88px] p-4 flex flex-col space-y-4">
+            <!-- Messages go here -->
+        </div>
+
+        <!-- Float Footer -->
+        <footer class="fixed bottom-0 w-full p-4 glassmorphism z-10 flex justify-center pb-8 lg:pb-4">
+            <form id="chat-form" class="w-full max-w-2xl flex gap-3">
+                <input type="text" id="message-input" class="flex-1 bg-black/60 border border-green-800 text-green-400 px-4 py-3 rounded-full focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400 transition-colors shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" placeholder="Fade into the static..." autocomplete="off" required>
+                <button type="submit" class="bg-green-600/20 hover:bg-green-600/40 border border-green-500 text-green-400 font-bold py-3 px-6 rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(0,255,0,0.2)] hover:shadow-[0_0_15px_rgba(0,255,0,0.6)]">Send</button>
+            </form>
+        </footer>
+    </div>
+
+    <script>
+        const countdownView = document.getElementById("countdown-view");
+        const chatView = document.getElementById("chat-view");
+        const countdownTimer = document.getElementById("countdown-timer");
+        const chatForm = document.getElementById("chat-form");
+        const messageInput = document.getElementById("message-input");
+        const chatContainer = document.getElementById("chat-container");
+
+        let ws;
+        let isConnected = false;
+
+        function checkTime() {
+            const now = new Date();
+            const hours = now.getHours();
+            
+            // Time gate: 1 AM to 5 AM
+            if (hours >= 1 && hours < 5) {
+                countdownView.classList.add("hidden");
+                chatView.classList.remove("hidden");
+                if (!isConnected) connect();
+            } else {
+                chatView.classList.add("hidden");
+                countdownView.classList.remove("hidden");
+                if (isConnected && ws) {
+                    ws.close();
+                    isConnected = false;
+                }
+                updateCountdown(now);
+            }
+        }
+
+        function updateCountdown(now) {
+            // Find next 1 AM
+            let target = new Date();
+            target.setHours(1, 0, 0, 0);
+            if (now.getHours() >= 5) {
+                // If it's past 5 AM, next 1 AM is tomorrow
+                target.setDate(target.getDate() + 1);
+            }
+            
+            const diff = target - now;
+            const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const s = Math.floor((diff % (1000 * 60)) / 1000);
+            
+            countdownTimer.innerText = 
+                String(h).padStart(2, '0') + ':' + 
+                String(m).padStart(2, '0') + ':' + 
+                String(s).padStart(2, '0');
+        }
+
+        setInterval(checkTime, 1000);
+        checkTime();
+
+        function connect() {
+            ws = new WebSocket("ws://localhost:8000/ws");
+
+            ws.onopen = () => {
+                isConnected = true;
+                appendMessage("System", "Connected to the void.", "system");
+            };
+
+            ws.onmessage = (event) => {
+                appendMessage("Anonymous", event.data, "received");
+            };
+
+            ws.onclose = () => {
+                isConnected = false;
+            };
+        }
+
+        chatForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const message = messageInput.value.trim();
+            if (message && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(message);
+                appendMessage("You", message, "sent");
+                messageInput.value = "";
+            }
+        });
+
+        function appendMessage(sender, text, type) {
+            const wrapper = document.createElement("div");
+            wrapper.className = "flex w-full " + (type === 'sent' ? "justify-end" : "justify-start");
+            
+            let innerHTML = '';
+            
+            if (type === 'system') {
+                wrapper.className = "flex w-full justify-center";
+                innerHTML = `<div class="text-green-800 text-xs italic tracking-widest opacity-80 uppercase">[ ${escapeHTML(text)} ]</div>`;
+            } else if (type === 'sent') {
+                innerHTML = `
+                    <div class="max-w-[80%] bg-green-950/40 border border-green-500/50 rounded-2xl rounded-br-sm px-4 py-3 shadow-[0_0_10px_rgba(0,255,0,0.15)] backdrop-blur-sm">
+                        <div class="text-[10px] text-green-300/60 mb-1 font-sans tracking-wide">YOU</div>
+                        <div class="text-green-100 break-words">${escapeHTML(text)}</div>
+                    </div>`;
+            } else {
+                innerHTML = `
+                    <div class="max-w-[80%] bg-zinc-900 border border-zinc-700/50 rounded-2xl rounded-bl-sm px-4 py-3 shadow-[0_4px_6px_rgba(0,0,0,0.6)]">
+                        <div class="text-[10px] text-zinc-500 mb-1 font-sans tracking-wide">ANONYMOUS</div>
+                        <div class="text-zinc-300 break-words">${escapeHTML(text)}</div>
+                    </div>`;
+            }
+            
+            wrapper.innerHTML = innerHTML;
+            chatContainer.appendChild(wrapper);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag])
+            );
+        }
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js');
+            });
+        }
+    </script>
+</body>
+</html>
