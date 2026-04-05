@@ -1,19 +1,35 @@
 import sqlite3
 import json
+import uuid
+import os
 from datetime import datetime, timezone, timedelta
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-
-# IST timezone
-IST = timezone(timedelta(hours=5, minutes=30))
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from passlib.context import CryptContext
-import os
+from starlette.middleware.sessions import SessionMiddleware
+from authlib.integrations.starlette_client import OAuth
+
+# IST timezone
+IST = timezone(timedelta(hours=5, minutes=30))
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 app = FastAPI()
+app.add_middleware(SessionMiddleware, secret_key="super-secret-1am-void")
+
+# OAuth Setup
+oauth = OAuth()
+oauth.register(
+    name='google',
+    client_id=os.environ.get('GOOGLE_CLIENT_ID', 'placeholder_id'),
+    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET', 'placeholder_secret'),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={
+        'scope': 'openid email profile'
+    }
+)
 
 # Database setup
 DB_FILE = "void_users.db"
@@ -27,6 +43,10 @@ def init_db():
             password TEXT NOT NULL
         )
     ''')
+    try:
+        cursor.execute('ALTER TABLE users ADD COLUMN session_token TEXT')
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -61,12 +81,77 @@ async def login(user: User):
     cursor = conn.cursor()
     cursor.execute("SELECT password FROM users WHERE username=?", (user.username,))
     row = cursor.fetchone()
-    conn.close()
     
     if not row or not pwd_context.verify(user.password, row[0]):
+        conn.close()
         return JSONResponse(status_code=400, content={"error": "Invalid username or password."})
     
-    return {"message": "Login successful."}
+    session_token = str(uuid.uuid4())
+    cursor.execute("UPDATE users SET session_token=? WHERE username=?", (session_token, user.username))
+    conn.commit()
+    conn.close()
+    
+    response = JSONResponse(content={"message": "Login successful."})
+    response.set_cookie(key="session_token", value=session_token, httponly=True, samesite="Lax")
+    return response
+
+@app.get("/auth/google")
+async def auth_google(request: Request):
+    redirect_uri = request.url_for('auth_google_callback')
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@app.get("/auth/google/callback")
+async def auth_google_callback(request: Request):
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        userinfo = token.get('userinfo')
+    except Exception:
+        return RedirectResponse(url="/")
+        
+    if not userinfo:
+        return RedirectResponse(url="/")
+        
+    email = userinfo.get('email')
+    if not email:
+        return RedirectResponse(url="/")
+        
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # Check if user exists
+    cursor.execute("SELECT * FROM users WHERE username=?", (email,))
+    user = cursor.fetchone()
+    
+    if not user:
+        # Create user with empty password
+        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (email, ""))
+        
+    # Generate secure session token
+    session_token = str(uuid.uuid4())
+    cursor.execute("UPDATE users SET session_token=? WHERE username=?", (session_token, email))
+    conn.commit()
+    conn.close()
+    
+    response = RedirectResponse(url="/")
+    response.set_cookie(key="session_token", value=session_token, httponly=True, samesite="Lax")
+    return response
+
+@app.get("/api/me")
+async def get_current_user(request: Request):
+    session_token = request.cookies.get("session_token")
+    if not session_token:
+        return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+        
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT username FROM users WHERE session_token=?", (session_token,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        return JSONResponse(status_code=401, content={"error": "Invalid session"})
+        
+    return {"username": row[0]}
 
 # Connection manager
 class ConnectionManager:

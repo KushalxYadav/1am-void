@@ -78,6 +78,63 @@
             transform: translateY(-2px);
         }
 
+        /* Redesigned Auth Buttons */
+        button.google-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        button.google-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+        }
+
+        button.google-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: white;
+        }
+
+        .auth-divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            margin: 15px 0 20px;
+            color: #aaa;
+            font-size: 12px;
+        }
+
+        .auth-divider::before, .auth-divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .auth-divider span {
+            padding: 0 10px;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: -50px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(170, 0, 255, 0.8);
+            border: 1px solid var(--cyan);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 15px var(--purple);
+            transition: bottom 0.4s ease;
+            z-index: 100;
+        }
+
         /* Timer Screen & Top Nav */
         #top-nav {
             display: none;
@@ -305,14 +362,27 @@
     <div id="auth-screen" class="glass-card">
         <h1 id="auth-title">1 AM VOID</h1>
         <div class="error-msg" id="auth-error"></div>
-        <input type="text" id="username" placeholder="Username" autocomplete="off">
-        <input type="password" id="password" placeholder="Password">
-        <button id="auth-btn">ENTER THE VOID</button>
-        <button id="back-to-timer">BACK TO TIMER</button>
-        <div class="toggle-text">
-            <span id="toggle-auth">Need an account? Sign up</span>
-        </div>
+        
+        <button id="google-btn" class="google-btn">
+            <svg viewBox="0 0 24 24">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+            </svg>
+            Continue with Google
+        </button>
+
+        <div class="auth-divider"><span>OR</span></div>
+
+        <input type="email" id="email" placeholder="Email Address" autocomplete="off">
+        <button id="email-btn">Continue with Email</button>
+        
+        <button id="back-to-timer" style="margin-top: 15px;">BACK TO TIMER</button>
     </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast">Magic link sent to your email!</div>
 
     <!-- Chat Screen -->
     <div id="chat-screen" class="glass-card">
@@ -335,35 +405,17 @@
         const topNav = document.getElementById('top-nav');
         const backToTimerBtn = document.getElementById('back-to-timer');
         
-        const toggleAuthBtn = document.getElementById('toggle-auth');
-        const authBtn = document.getElementById('auth-btn');
-        const usernameInput = document.getElementById('username');
-        const passwordInput = document.getElementById('password');
+        const emailInput = document.getElementById('email');
+        const emailBtn = document.getElementById('email-btn');
+        const googleBtn = document.getElementById('google-btn');
         const authError = document.getElementById('auth-error');
+        const toast = document.getElementById('toast');
 
         const chatHistory = document.getElementById('chat-history');
         const messageInput = document.getElementById('message-input');
         const sendBtn = document.getElementById('send-btn');
 
-        function setupAuthMode() {
-            authError.innerText = '';
-            if (isSignupMode) {
-                authBtn.innerText = 'CREATE REALITY';
-                toggleAuthBtn.innerText = 'Already have an account? Login';
-            } else {
-                authBtn.innerText = 'ENTER THE VOID';
-                toggleAuthBtn.innerText = 'Need an account? Sign up';
-            }
-        }
-
-        toggleAuthBtn.addEventListener('click', () => {
-            isSignupMode = !isSignupMode;
-            setupAuthMode();
-        });
-
         document.getElementById('nav-login-btn').addEventListener('click', () => {
-            isSignupMode = false;
-            setupAuthMode();
             timerScreen.style.display = 'none';
             topNav.style.display = 'none';
             authScreen.style.display = 'block';
@@ -371,8 +423,6 @@
         });
 
         document.getElementById('nav-signup-btn').addEventListener('click', () => {
-            isSignupMode = true;
-            setupAuthMode();
             timerScreen.style.display = 'none';
             topNav.style.display = 'none';
             authScreen.style.display = 'block';
@@ -444,55 +494,51 @@
         
         showDefaultScreen();
 
-        authBtn.addEventListener('click', async () => {
-            const username = usernameInput.value.trim();
-            const password = passwordInput.value;
+        googleBtn.addEventListener('click', () => {
+            window.location.href = '/auth/google';
+        });
 
-            if (!username || !password) {
+        emailBtn.addEventListener('click', () => {
+            const email = emailInput.value.trim();
+            if (!email || !email.includes('@')) {
                 authError.style.color = '#ff3366';
-                authError.innerText = 'Both fields are required.';
+                authError.innerText = 'Please enter a valid email address.';
                 return;
             }
-
             authError.innerText = '';
-            const endpoint = isSignupMode ? '/api/signup' : '/api/login';
-
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-                const data = await response.json();
-
-                if (!response.ok) {
-                    authError.style.color = '#ff3366';
-                    authError.innerText = data.error || 'Authentication failed.';
-                    return;
-                }
-
-                // Switch back to login if signup was successful
-                if (isSignupMode) {
-                    isSignupMode = false;
-                    authError.style.color = '#00f3ff';
-                    authError.innerText = 'Signup successful! Please login.';
-                    authBtn.innerText = 'ENTER THE VOID';
-                    toggleAuthBtn.innerText = 'Need an account? Sign up';
-                    passwordInput.value = '';
-                    setTimeout(() => { authError.style.color = '#ff3366'; authError.innerText = ''; }, 3000);
-                    return;
-                }
-
-                // Successful login
-                currentUser = username;
-                authScreen.style.display = 'none';
-                chatScreen.style.display = 'flex';
-                connectWebSocket();
-            } catch (err) {
-                authError.style.color = '#ff3366';
-                authError.innerText = 'Server unreached. The void is silent.';
-            }
+            showToast('Magic link sent to your email!');
         });
+        
+        function showToast(msg) {
+            toast.innerText = msg;
+            toast.style.bottom = '20px';
+            setTimeout(() => {
+                toast.style.bottom = '-50px';
+            }, 3000);
+        }
+
+        // Validate session cookie on load if timegate is open or to bypass
+        async function validateSession() {
+            try {
+                const response = await fetch('/api/me');
+                if (response.ok) {
+                    const data = await response.json();
+                    currentUser = data.username;
+                    
+                    const isOpen = checkTimeGate();
+                    if (isOpen) {
+                        timerScreen.style.display = 'none';
+                        topNav.style.display = 'none';
+                        authScreen.style.display = 'none';
+                        chatScreen.style.display = 'flex';
+                        connectWebSocket();
+                        if (countdownInterval) clearInterval(countdownInterval);
+                    }
+                }
+            } catch (e) {}
+        }
+        
+        validateSession();
 
         function connectWebSocket() {
             const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
