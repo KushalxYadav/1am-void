@@ -34,6 +34,89 @@ oauth.register(
 # Database setup
 DB_FILE = "void_users.db"
 
+def send_magic_link(email: str, token: str, request: Request):
+    smtp_email = os.environ.get('SMTP_EMAIL')
+    smtp_password = os.environ.get('SMTP_PASSWORD')
+    
+    if not smtp_email or not smtp_password:
+        print("SMTP Credentials missing. Cannot send email.")
+        return
+        
+    verify_url = f"http://1am-void.duckdns.org/auth/verify?token={token}"
+    
+    msg = MIMEMultipart()
+    msg['From'] = smtp_email
+    msg['To'] = email
+    msg['Subject'] = "ENTER THE VOID"
+    
+    body = f"""Welcome to the void.
+
+Click the link below to enter:
+{verify_url}
+"""
+    msg.attach(MIMEText(body, 'plain'))
+    
+    try:
+        # Defaults to Gmail SMTP, configure inside if using another provider
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(smtp_email, smtp_password)
+        text = msg.as_string()
+        server.sendmail(smtp_email, email, text)
+        server.quit()
+    except Exception as e:
+        print(f"Error sending email: {e}")
+
+@app.post("/api/auth/email")
+async def email_login(data: EmailLogin, request: Request):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # Task 1: Check for duplicate existing users
+    cursor.execute("SELECT * FROM users WHERE username=?", (data.email,))
+    user = cursor.fetchone()
+    
+    if user:
+        conn.close()
+        return JSONResponse(status_code=400, content={"detail": "Account already exists. Please sign in via Google."})
+        
+    # Generate token
+    token = str(uuid.uuid4())
+    cursor.execute("INSERT INTO magic_links (token, email) VALUES (?, ?)", (token, data.email))
+    conn.commit()
+    conn.close()
+    
+    send_magic_link(data.email, token, request)
+    return {"message": "Magic link sent"}
+
+@app.get("/auth/verify")
+async def verify_email(token: str):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT email, created_at FROM magic_links WHERE token=?", (token,))
+    row = cursor.fetchone()
+    
+    if not row:
+        conn.close()
+        return JSONResponse(status_code=400, content={"detail": "Invalid or expired token."})
+        
+    email = row[0]
+    cursor.execute("DELETE FROM magic_links WHERE token=?", (token,))
+    
+    cursor.execute("SELECT * FROM users WHERE username=?", (email,))
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO users (username, password, name, picture) VALUES (?, ?, ?, ?)", (email, "", email.split('@')[0], ""))
+        
+    session_token = str(uuid.uuid4())
+    cursor.execute("UPDATE users SET session_token=? WHERE username=?", (session_token, email))
+    conn.commit()
+    conn.close()
+    
+    response = RedirectResponse(url="/")
+    response.set_cookie(key="session_token", value=session_token, httponly=True, samesite="Lax")
+    return response
+
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
