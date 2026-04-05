@@ -602,22 +602,22 @@
                 return;
             }
             authError.innerText = '';
-            
+
             try {
                 const response = await fetch('/api/auth/email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (!response.ok) {
                     authError.style.color = '#ff3366';
                     authError.innerText = data.detail || 'An error occurred.';
                     return;
                 }
-                
+
                 showToast('Magic link sent to your email!');
             } catch (err) {
                 authError.style.color = '#ff3366';
