@@ -78,8 +78,76 @@
             transform: translateY(-2px);
         }
 
+        /* Timer Screen & Top Nav */
+        #top-nav {
+            display: none;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+        }
+
+        #top-nav button {
+            width: auto;
+            padding: 8px 15px;
+            font-size: 14px;
+            margin-left: 10px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ddd;
+        }
+        
+        #top-nav button:hover {
+            color: white;
+            border-color: var(--cyan);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.3);
+        }
+
+        #timer-screen {
+            display: none;
+            width: 380px;
+            padding: 50px 30px;
+            text-align: center;
+        }
+
+        #timer-screen h1 {
+            margin-bottom: 20px;
+            font-size: 26px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px var(--cyan);
+        }
+
+        .timer-label {
+            font-size: 14px;
+            color: #aaa;
+            margin-bottom: 30px;
+        }
+
+        #countdown {
+            font-size: 48px;
+            font-weight: bold;
+            letter-spacing: 3px;
+            color: var(--purple);
+            text-shadow: 0 0 15px var(--purple), 0 0 30px rgba(170, 0, 255, 0.5);
+        }
+        
+        #back-to-timer {
+            display: none;
+            margin-top: 15px;
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 14px;
+            color: #aaa;
+        }
+        
+        #back-to-timer:hover {
+            color: white;
+            border-color: var(--cyan);
+        }
+
         /* Auth Screen */
         #auth-screen {
+            display: none;
             width: 350px;
             padding: 40px;
             text-align: center;
@@ -220,6 +288,19 @@
 
 <body>
 
+    <!-- Top Nav -->
+    <div id="top-nav">
+        <button id="nav-login-btn">Sign In</button>
+        <button id="nav-signup-btn">Sign Up</button>
+    </div>
+
+    <!-- Timer Screen -->
+    <div id="timer-screen" class="glass-card">
+        <h1>THE VOID IS CLOSED</h1>
+        <div class="timer-label">It awakens at 1:00 AM IST</div>
+        <div id="countdown">00:00:00</div>
+    </div>
+
     <!-- Auth Screen -->
     <div id="auth-screen" class="glass-card">
         <h1 id="auth-title">1 AM VOID</h1>
@@ -227,6 +308,7 @@
         <input type="text" id="username" placeholder="Username" autocomplete="off">
         <input type="password" id="password" placeholder="Password">
         <button id="auth-btn">ENTER THE VOID</button>
+        <button id="back-to-timer">BACK TO TIMER</button>
         <div class="toggle-text">
             <span id="toggle-auth">Need an account? Sign up</span>
         </div>
@@ -249,6 +331,10 @@
 
         const authScreen = document.getElementById('auth-screen');
         const chatScreen = document.getElementById('chat-screen');
+        const timerScreen = document.getElementById('timer-screen');
+        const topNav = document.getElementById('top-nav');
+        const backToTimerBtn = document.getElementById('back-to-timer');
+        
         const toggleAuthBtn = document.getElementById('toggle-auth');
         const authBtn = document.getElementById('auth-btn');
         const usernameInput = document.getElementById('username');
@@ -259,8 +345,7 @@
         const messageInput = document.getElementById('message-input');
         const sendBtn = document.getElementById('send-btn');
 
-        toggleAuthBtn.addEventListener('click', () => {
-            isSignupMode = !isSignupMode;
+        function setupAuthMode() {
             authError.innerText = '';
             if (isSignupMode) {
                 authBtn.innerText = 'CREATE REALITY';
@@ -269,7 +354,95 @@
                 authBtn.innerText = 'ENTER THE VOID';
                 toggleAuthBtn.innerText = 'Need an account? Sign up';
             }
+        }
+
+        toggleAuthBtn.addEventListener('click', () => {
+            isSignupMode = !isSignupMode;
+            setupAuthMode();
         });
+
+        document.getElementById('nav-login-btn').addEventListener('click', () => {
+            isSignupMode = false;
+            setupAuthMode();
+            timerScreen.style.display = 'none';
+            topNav.style.display = 'none';
+            authScreen.style.display = 'block';
+            backToTimerBtn.style.display = 'block';
+        });
+
+        document.getElementById('nav-signup-btn').addEventListener('click', () => {
+            isSignupMode = true;
+            setupAuthMode();
+            timerScreen.style.display = 'none';
+            topNav.style.display = 'none';
+            authScreen.style.display = 'block';
+            backToTimerBtn.style.display = 'block';
+        });
+        
+        backToTimerBtn.addEventListener('click', () => {
+            showDefaultScreen();
+        });
+
+        function getISTTime() {
+            const now = new Date();
+            const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+            return new Date(utc + (3600000 * 5.5));
+        }
+
+        function checkTimeGate() {
+            const istTime = getISTTime();
+            const hour = istTime.getHours();
+            return hour >= 1 && hour < 5;
+        }
+
+        function updateCountdown() {
+            const istTime = getISTTime();
+            let target = new Date(istTime);
+            
+            if (istTime.getHours() >= 5) {
+                target.setDate(target.getDate() + 1);
+            }
+            target.setHours(1, 0, 0, 0);
+            
+            const diff = target - istTime;
+            if (diff <= 0) {
+                if (timerScreen.style.display !== 'none') {
+                    showDefaultScreen();
+                }
+                return;
+            }
+            
+            const h = Math.floor(diff / (1000 * 60 * 60));
+            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const s = Math.floor((diff % (1000 * 60)) / 1000);
+            
+            document.getElementById('countdown').innerText = 
+                `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        let countdownInterval;
+
+        function showDefaultScreen() {
+            const isOpen = checkTimeGate();
+            if (isOpen) {
+                timerScreen.style.display = 'none';
+                topNav.style.display = 'none';
+                authScreen.style.display = 'block';
+                chatScreen.style.display = 'none';
+                backToTimerBtn.style.display = 'none';
+                if (countdownInterval) clearInterval(countdownInterval);
+            } else {
+                timerScreen.style.display = 'block';
+                topNav.style.display = 'block';
+                authScreen.style.display = 'none';
+                chatScreen.style.display = 'none';
+                updateCountdown();
+                if (countdownInterval) clearInterval(countdownInterval);
+                countdownInterval = setInterval(updateCountdown, 1000);
+            }
+        }
+        
+        showDefaultScreen();
 
         authBtn.addEventListener('click', async () => {
             const username = usernameInput.value.trim();
@@ -361,7 +534,9 @@
 
         function appendMessage(sender, text) {
             const msgDiv = document.createElement('div');
-            msgDiv.className = `message ${sender === currentUser ? 'my-message' : 'other-message'}`;
+            // Fix: ensure case-insensitive, trimmed comparison to correctly identify same user across devices
+            const isMe = String(sender).trim().toLowerCase() === String(currentUser).trim().toLowerCase();
+            msgDiv.className = `message ${isMe ? 'my-message' : 'other-message'}`;
 
             const senderName = document.createElement('div');
             senderName.className = 'sender-name';

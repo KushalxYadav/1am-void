@@ -1,7 +1,10 @@
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+
+# IST timezone
+IST = timezone(timedelta(hours=5, minutes=30))
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -89,9 +92,10 @@ manager = ConnectionManager()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    current_hour = datetime.now().hour
+    current_time = datetime.now(IST)
+    current_hour = current_time.hour
     # The void is only accessible between 01:00 AM and 04:59 AM
-    # i.e., hour 1, 2, 3, or 4
+    # i.e., hour 1, 2, 3, or 4 (IST)
     if not (1 <= current_hour < 5):
         await websocket.close(code=1008, reason="The void is closed.")
         return
