@@ -67,6 +67,9 @@ Click the link below to enter:
     except Exception as e:
         print(f"Error sending email: {e}")
 
+class EmailLogin(BaseModel):
+    email: str
+
 @app.post("/api/auth/email")
 async def email_login(data: EmailLogin, request: Request):
     conn = sqlite3.connect(DB_FILE)
