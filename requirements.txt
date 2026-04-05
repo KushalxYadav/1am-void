@@ -1,7 +1,7 @@
-fastapi
+ÿþfastapi
 uvicorn
 websockets
 passlib[bcrypt]
 authlib
 httpx
-itsdangerous
+itsdangerou

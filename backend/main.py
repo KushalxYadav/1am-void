@@ -47,6 +47,14 @@ def init_db():
         cursor.execute('ALTER TABLE users ADD COLUMN session_token TEXT')
     except sqlite3.OperationalError:
         pass
+    try:
+        cursor.execute('ALTER TABLE users ADD COLUMN name TEXT')
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute('ALTER TABLE users ADD COLUMN picture TEXT')
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -112,6 +120,9 @@ async def auth_google_callback(request: Request):
         return RedirectResponse(url="/")
         
     email = userinfo.get('email')
+    name = userinfo.get('name')
+    picture = userinfo.get('picture')
+    
     if not email:
         return RedirectResponse(url="/")
         
@@ -124,7 +135,9 @@ async def auth_google_callback(request: Request):
     
     if not user:
         # Create user with empty password
-        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (email, ""))
+        cursor.execute("INSERT INTO users (username, password, name, picture) VALUES (?, ?, ?, ?)", (email, "", name, picture))
+    else:
+        cursor.execute("UPDATE users SET name=?, picture=? WHERE username=?", (name, picture, email))
         
     # Generate secure session token
     session_token = str(uuid.uuid4())
@@ -136,7 +149,7 @@ async def auth_google_callback(request: Request):
     response.set_cookie(key="session_token", value=session_token, httponly=True, samesite="Lax")
     return response
 
-@app.get("/api/me")
+@app.get("/api/user/me")
 async def get_current_user(request: Request):
     session_token = request.cookies.get("session_token")
     if not session_token:
@@ -144,14 +157,20 @@ async def get_current_user(request: Request):
         
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT username FROM users WHERE session_token=?", (session_token,))
+    cursor.execute("SELECT username, name, picture FROM users WHERE session_token=?", (session_token,))
     row = cursor.fetchone()
     conn.close()
     
     if not row:
         return JSONResponse(status_code=401, content={"error": "Invalid session"})
         
-    return {"username": row[0]}
+    return {"email": row[0], "name": row[1] or row[0], "picture": row[2]}
+
+@app.post("/api/logout")
+async def logout(request: Request):
+    response = JSONResponse(content={"message": "Logged out successfully"})
+    response.delete_cookie("session_token")
+    return response
 
 # Connection manager
 class ConnectionManager:
